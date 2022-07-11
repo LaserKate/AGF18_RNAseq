@@ -1,0 +1,156 @@
+#AGF2018 
+
+######################## Larvae #######################
+
+#extract fastq files from each folder
+mv */*.fastq.gz .
+
+#transfer files to Alabama Super Computer
+scp *.fastq.gz aubmes@dmc.asc.edu:/home/aubmes/Moorea/AGF/working
+
+#unzip all fastqs
+gunzip *.gz
+
+#obtain A.millepora genome from https://przeworskilab.com/data/
+#obtain Misha’s Tagseq scripts 
+git clone https://github.com/z0on/tag-based_RNAseq.git
+
+#obtain A.tenuis genome from ENA
+wget ftp://ftp.sra.ebi.ac.uk/vol1/fastq/ERR164/ERR164407/ERR164407.fastq.gz
+
+####################### concatenate fastq files by sample ID
+
+for file in *.fastq; do echo "mv ${file} sample_${file}"  >> rename; done
+#make rename into a bash script, make executable, run
+
+/home/aubmes/bin/tag-based_RNAseq/ngs_concat.pl 'sample'  'sample_(.+)_L00'
+#make ngs_concat into a bash script, make executable, run
+
+####################### adaptor trimming, deduplicating, and quality filtering with Misha's script
+
+for F in *.fq; do echo "/home/aubmes/bin/tag-based_RNAseq/tagseq_clipper.pl $F | cutadapt - -a AAAAAAAA -a AGATCGG -q 15 -m 25 -o ${F/.fq/}.trim" >>clean; done
+
+####################### run fastqc on trimmed samples
+
+mkdir Fastqc_Results
+echo fastqc -o fastqc/ -f fastq *.trim > runFQC
+
+#extract html files from each folder
+mv */*.html .
+
+####################### count trimmed reads
+
+/home/aubmes/bin/tag-based_RNAseq/countreads.pl fastq > countreadsfq.txt
+/home/aubmes/bin/tag-based_RNAseq/countreads.pl trim > countreadstrim.txt
+
+####################### mapping reads to Amillepora genome using bowtie2
+
+bowtie2-build Amil.all.maker.transcripts.fasta Amil.all.maker.transcripts.fasta
+
+/home/aubmes/bin/tag-based_RNAseq/tagseq_bowtie2map.pl "trim$" /home/aubmes/Moorea/AGF/genome/Amil_v2.01/Amil.all.maker.transcripts.fasta > maps
+
+grep "overall alignment rate" maps.o439811 > map_efficiency.txt
+
+####################### mapping reads to Atenuis genome using bowtie2
+
+bowtie2-build aten_0.11.maker_post_001.transcripts.fasta aten_0.11.maker_post_001.transcripts.fasta
+
+/home/aubmes/bin/tag-based_RNAseq/tagseq_bowtie2map.pl "trim$" /home/aubmes/Moorea/AGF/genome/Aten_0.11/aten_0.11.maker_post_001.transcripts.fasta > maps
+
+grep "overall alignment rate" mapsSCRIPT.o616751 > map_efficiency.txt
+
+
+####################### compile counts
+
+awk '{ print $1, $1 }' aten_annotation_table.tsv > seq2seq_aten.tab
+
+/home/aubmes/bin/tag-based_RNAseq/samcount_launch_bt2.pl '\.sam' /home/aubmes/Moorea/AGF/genome/Aten_0.11/seq2seq_aten.tab > sc
+
+/home/aubmes/bin/tag-based_RNAseq/expression_compiler.pl *.sam.counts > AGF_larvae_2018_geneCounts.txt
+
+
+####################### tar directory
+tar -zcvf AGF_Larvae_2018_all.tar.gz /home/aubmes/Moorea/AGF/working
+
+
+##########################################################################
+# AGF 2018 Juveniles
+
+#extract fastq files from each folder
+mv */*.fastq.gz .
+
+#transfer files to Alabama Super Computer
+scp *.fastq.gz aubmes@dmc.asc.edu:/home/aubmes/Moorea/AGF/working
+
+#unzip all fastqs
+gunzip *.gz
+
+####################### concatenate fastq files by sample ID
+
+for file in *.fastq; do echo "mv ${file} sample_${file}"  >> rename; done
+#make rename into a bash script, make executable, run
+
+/home/aubmes/bin/tag-based_RNAseq/ngs_concat.pl 'sample'  'sample_(.+)_L00'
+#make ngs_concat into a bash script, make executable, run
+
+####################### adaptor trimming, deduplicating, and quality filtering with Misha's script
+
+for F in *.fq; do echo "/home/aubmes/bin/tag-based_RNAseq/tagseq_clipper.pl $F | cutadapt - -a AAAAAAAA -a AGATCGG -q 15 -m 25 -o ${F/.fq/}.trim" >>clean; done
+
+####################### count trimmed reads
+
+/home/aubmes/bin/tag-based_RNAseq/countreads.pl fq > AGF2018_juves_countreadsfq.txt
+/home/aubmes/bin/tag-based_RNAseq/countreads.pl trim > AGF2018_juves_countreadstrim.txt
+
+####################### Mapping to Amillepora 
+#combine Amil transcripts and ABCD transcripts 
+cat Amil.all.maker.transcripts.fasta symABCD.fasta > Amil_symABCD.fasta
+
+bowtie2-build Amil_symABCD.fasta Amil_symABCD.fasta
+
+/home/aubmes/bin/tag-based_RNAseq/tagseq_bowtie2map.pl "trim$" /home/aubmes/Moorea/AGF/genome/Amil_v2.01/Amil_symABCD.fasta > maps_symall
+
+grep "overall alignment rate" mapssymallSCRIPT.o616991 > AGF2018_juves_Aten_map_efficiency_AmilsymABCD.txt
+
+#counting up reads matching up to different sym clades using Misha’s script 
+zooxtype.pl host="Amillepora03937-RA" >zooxCounts.txt
+
+####################### Mapping to Atenuis
+#combine Aten transcripts and ABCD transcripts 
+cat aten_0.11.maker_post_001.transcripts.fasta symABCD.fasta > Aten_symABCD.fasta
+
+bowtie2-build Aten_symABCD.fasta Aten_symABCD.fasta
+
+/home/aubmes/bin/tag-based_RNAseq/tagseq_bowtie2map.pl "trim$" /home/aubmes/Moorea/AGF/genome/Aten_0.11/Aten_symABCD.fasta > maps_symall
+
+grep "overall alignment rate" maps.o494697 > AGF2018_juves_Aten_map_efficiency_AmilsymABCD.txt
+
+#counting up reads matching up to different sym clades using Misha’s script 
+zooxtype.pl host="aten_0.1.m1.32758.m1" >zooxCounts.txt
+
+####################### removing sym mapping reads
+
+for file in *.sam; do echo grep -v -e chr11 -e chr12 -e chr13 -e chr14 ${file} \> ${file/.sam/.host.sam} >> sort; done
+
+####################### compiling counts
+
+for file in *.host.sam; do echo /home/aubmes/bin/tag-based_RNAseq/samcount.pl ${file} /home/aubmes/Moorea/AGF/genome/Aten_0.11/seq2seq_aten.tab aligner=bowtie2 \> ${file/.sam/.sam.counts} >> counts; done
+
+/home/aubmes/bin/tag-based_RNAseq/expression_compiler.pl *.sam.counts > AGF_juvenile_2018_geneCounts_aten.txt
+
+####################### get KOG annotation
+#Amil
+#  KOG classes (single-letter):
+awk -F "\t" 'BEGIN {OFS="\t" }{print $1,$12 }' Amillepora_euk.emapper.annotations | grep -Ev "[,#S]" >amil_gene2kogClass1.tab
+# converting single-letter KOG classes to text understood by KOGMWU package (must have kog_classes.txt file in the same dir):
+awk 'BEGIN {FS=OFS="\t"} NR==FNR {a[$1] = $2;next} {print $1,a[$2]}' kog_classes.txt amil_gene2kogClass1.tab > Amil_gene2kogClass.tab
+
+#Aten
+#  KOG classes (single-letter):
+awk -F "\t" 'BEGIN {OFS="\t" }{print $1,$7 }' MM_9lztkzqd.emapper.annotations.tsv | grep -Ev "[,#S]" >aten_gene2kogClass1.tab
+# converting single-letter KOG classes to text understood by KOGMWU package (must have kog_classes.txt file in the same dir):
+awk 'BEGIN {FS=OFS="\t"} NR==FNR {a[$1] = $2;next} {print $1,a[$2]}' kog_classes.txt aten_gene2kogClass1.tab > Aten_gene2kogClass.tab
+
+
+
+
